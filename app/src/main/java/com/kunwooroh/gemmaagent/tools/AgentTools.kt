@@ -2,11 +2,7 @@ package com.kunwooroh.gemmaagent.tools
 
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraManager
-import android.os.BatteryManager
 import android.provider.AlarmClock
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
@@ -195,34 +191,6 @@ class AgentTools(
     } catch (e: Exception) {
       mapOf("result" to "error", "message" to (e.message ?: "invalid expression"))
     }
-  }
-
-  @Tool(description = "Turn the phone's flashlight (torch) on or off (손전등/플래시).")
-  fun setFlashlight(@ToolParam(description = "true to turn on, false to turn off.") on: Boolean): Map<String, Any> {
-    return try {
-      val cm = context.getSystemService(CameraManager::class.java)
-      val id =
-        cm.cameraIdList.firstOrNull {
-          cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        } ?: return mapOf("result" to "error", "message" to "no flashlight")
-      cm.setTorchMode(id, on)
-      onToolUsed(if (on) "🔦 손전등 켬" else "🔦 손전등 끔")
-      mapOf("result" to if (on) "on" else "off")
-    } catch (e: Exception) {
-      mapOf("result" to "error", "message" to (e.message ?: "flashlight error"))
-    }
-  }
-
-  @Tool(description = "Get the phone's battery level and charging state (배터리).")
-  fun getBatteryStatus(): Map<String, Any> {
-    val bm = context.getSystemService(BatteryManager::class.java)
-    val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-    val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-    val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-    val charging =
-      status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-    onToolUsed("🔋 배터리 $pct%")
-    return mapOf("percent" to pct, "charging" to charging)
   }
 
   @Tool(description = "Open an installed app by its name, e.g. '카카오톡', '유튜브', '카메라' (앱 열기).")

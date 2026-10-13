@@ -92,6 +92,8 @@ private val SUGGESTIONS =
     "내일 할 일 정리해줘: 은행, 보고서 마감, 장보기",
     "3시간 뒤에 약 먹으라고 알려줘",
     "내일 아침 7시에 알람 맞춰줘",
+    "사진 찍어서 앞에 뭐가 있는지 알려줘",
+    "손전등 켜줘",
     "12500원짜리 4개랑 3800원짜리 7개 합계 계산해줘",
     "\"오늘 회의는 3시로 미뤄졌어요\" 영어로 번역해줘",
   )
@@ -113,6 +115,8 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
   val ttsStatus by vm.speaker.status.collectAsState()
   var titleDialog by remember { mutableStateOf(false) }
   var skillsOpen by remember { mutableStateOf(false) }
+  var screenDialog by remember { mutableStateOf(false) }
+  val screenControl by vm.screenControl.collectAsState()
 
   var input by remember { mutableStateOf("") }
   var menuOpen by remember { mutableStateOf(false) }
@@ -196,6 +200,13 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
                 text = { Text("생각 모드 (느리지만 꼼꼼)") },
                 trailingIcon = { Switch(checked = thinking, onCheckedChange = null) },
                 onClick = { vm.setThinking(!thinking) },
+              )
+              DropdownMenuItem(
+                text = { Text(if (screenControl) "📱 화면 조작: 켜짐" else "📱 화면 조작 켜기") },
+                onClick = {
+                  menuOpen = false
+                  screenDialog = true
+                },
               )
               DropdownMenuItem(
                 text = { Text("🧩 스킬 관리") },
@@ -350,6 +361,55 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
 
   if (sheetOpen) {
     ModalBottomSheet(onDismissRequest = { sheetOpen = false }) { TodoNotesSheet(vm) }
+  }
+
+  if (screenDialog) {
+    AlertDialog(
+      onDismissRequest = { screenDialog = false },
+      title = { Text(if (screenControl) "화면 조작이 켜져 있어요" else "화면 조작 켜기") },
+      text = {
+        Text(
+          "켜면 젬마가 다른 앱 화면을 읽고 버튼을 누르고 글자를 입력할 수 있어요. " +
+            "예: \"카카오톡에서 엄마한테 곧 도착이라고 보내줘\"\n\n" +
+            "보내기·결제·삭제는 항상 먼저 물어봐요. 모든 처리는 폰 안에서만 해요.\n\n" +
+            "켜는 방법:\n" +
+            "1) [접근성 설정] → 설치된 앱 → '젬마 비서 화면 조작' → 사용\n" +
+            "2) '제한된 설정'이라며 막히면: [앱 정보] → 오른쪽 위 ⋮ → '제한된 설정 허용' 후 1)을 다시 해 주세요."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            screenDialog = false
+            try {
+              context.startActivity(
+                Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              )
+            } catch (_: Exception) {}
+          }
+        ) {
+          Text("접근성 설정")
+        }
+      },
+      dismissButton = {
+        TextButton(
+          onClick = {
+            screenDialog = false
+            try {
+              context.startActivity(
+                Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + context.packageName),
+                  )
+                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              )
+            } catch (_: Exception) {}
+          }
+        ) {
+          Text("앱 정보")
+        }
+      },
+    )
   }
 
   if (skillsOpen) {

@@ -9,7 +9,11 @@ object Prompts {
   /** 음성 메시지 첫 줄에 "들은 말"을 적게 할 때 쓰는 표시. */
   const val HEARD_MARK = "»"
 
-  fun systemInstruction(userTitle: String, skills: List<Pair<String, String>> = emptyList()): String {
+  fun systemInstruction(
+    userTitle: String,
+    skills: List<Pair<String, String>> = emptyList(),
+    screenControl: Boolean = false,
+  ): String {
     val now = SimpleDateFormat("yyyy년 M월 d일 EEEE HH:mm", Locale.KOREA).format(Date())
     val title = userTitle.trim()
     val callUser =
@@ -44,7 +48,15 @@ $HEARD_MARK 내일 아침 일곱 시에 깨워줘
 - 메모 → save_note, 메모 찾기 → search_notes
 - 계산 → calculate (직접 계산하지 않는다)
 - 날짜·요일·시간 → get_current_date_time
-- 손전등 → set_flashlight, 배터리 → get_battery_status, "OO 열어줘" → open_app
+- 앱 열기 → open_app
+
+## 폰 조작
+- 사진 → take_photo. "이거 뭐야", "앞에 뭐 있어"처럼 봐 달라는 말이면 describe=true. 카메라 앱만 열어 달라면 → open_camera
+- 전화 → call_contact, 문자 → send_message (번호를 채워 앱을 열어 주고, 마지막 버튼은 사용자가 누른다)
+- 손전등·볼륨·음소거·음악 재생/다음 곡·배터리·와이파이 등 설정 → control_device
+- 지도·길찾기·검색·유튜브 → open_search
+- 보내기·결제·삭제·전화 걸기처럼 되돌릴 수 없는 일은 반드시 사용자에게 먼저 묻고, "응/그래/보내" 같은 동의를 들은 뒤에만 실행한다.
+${screenSection(screenControl)}
 
 ${skillSection(skills)}
 ## 요청별 방식
@@ -59,6 +71,18 @@ ${skillSection(skills)}
 - 의학·법률·금융처럼 중요한 결정은 일반 정보만 주고 전문가 확인을 권한다.
 """.trim()
   }
+
+  private fun screenSection(enabled: Boolean): String =
+    if (enabled) {
+      """
+- 화면 조작이 켜져 있다. 전용 도구로 안 되는 일(앱 안에서 누르기·입력·찾기)은 화면을 보며 직접 한다:
+  1) 필요하면 open_app으로 앱을 연다 2) read_screen으로 화면을 읽는다 3) tap / type_text / scroll / press_button
+  4) 다시 read_screen으로 결과를 확인한다. 목표를 이룰 때까지 반복하되 10단계를 넘기면 멈추고 상황을 알린다.
+- 화면에 보이는 개인정보는 필요한 만큼만 읽고, 다시 말하지 않는다.
+"""
+    } else {
+      "- 다른 앱 안에서 누르기·입력 같은 화면 조작은 지금 꺼져 있다. 필요하면 '메뉴 ⋮ → 화면 조작 켜기'를 안내한다."
+    }
 
   private fun skillSection(skills: List<Pair<String, String>>): String {
     if (skills.isEmpty()) return ""

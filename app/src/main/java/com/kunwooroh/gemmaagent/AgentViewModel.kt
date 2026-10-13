@@ -22,7 +22,13 @@ import com.kunwooroh.gemmaagent.llm.ModelManager
 import com.kunwooroh.gemmaagent.llm.ModelOption
 import com.kunwooroh.gemmaagent.llm.Prompts
 import com.kunwooroh.gemmaagent.llm.Speaker
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.kunwooroh.gemmaagent.tools.AgentTools
+import com.kunwooroh.gemmaagent.tools.PhoneTools
+import com.kunwooroh.gemmaagent.tools.PhotoTaker
+import com.kunwooroh.gemmaagent.tools.ScreenControlService
+import com.kunwooroh.gemmaagent.tools.ScreenTools
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -135,6 +141,35 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private var currentAgentId: Long = -1
 
   private val agentTools = AgentTools(ctx, todos, notes, skills) { label -> onToolUsed(label) }
+  private val phoneTools =
+    PhoneTools(ctx, onToolUsed = { onToolUsed(it) }, onPhoto = { photo, describe -> pendingPhoto = photo to describe })
+  private val screenTools = ScreenTools { label -> onToolUsed(label) }
+
+  /** 화면 조작(접근성)이 켜져 있는지 */
+  private val _screenControl = MutableStateFlow(ScreenControlService.isEnabled(ctx))
+  val screenControl: StateFlow<Boolean> = _screenControl
+
+  @Volatile private var pendingPhoto: Pair<PhotoTaker.Photo, Boolean>? = null
+  private var followUpPending = false
+
+  private fun toolList() =
+    buildList {
+      add(tool(agentTools))
+      add(tool(phoneTools))
+      if (_screenControl.value) add(tool(screenTools))
+    }
+
+  /** 앱으로 돌아올 때마다: 화면 조작을 켜고/껐으면 젬마의 도구 목록을 바꾼다. */
+  fun refreshScreenControl() {
+    val now = ScreenControlService.isEnabled(ctx)
+    if (now == _screenControl.value) return
+    _screenControl.value = now
+    if (engine.isReady) {
+      engine.setTools(toolList())
+      newChat()
+      toast(if (now) "화면 조작이 켜졌어요" else "화면 조작이 꺼졌어요")
+    }
+  }
 
   init {
     speaker.onAllDone = { viewModelScope.launch(Dispatchers.Main) { onSpeechFinished() } }
@@ -208,11 +243,12 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
           engine.load(
             modelPath = file.absolutePath,
             preferGpu = settings.useGpu,
-            tools = listOf(tool(agentTools)),
+            tools = toolList(),
             systemPrompt = {
               Prompts.systemInstruction(
                 settings.userTitle,
                 skills.enabledSkills().map { it.name to it.description },
+                _screenControl.value,
               )
             },
           )
@@ -355,14 +391,14 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
 
   private fun shouldSpeak(): Boolean = speaker.isReady && (_voiceReply.value || _voiceOpen.value)
 
-  private fun sendInternal(text: String, image: Bitmap?, audioWav: ByteArray?) {
+  private fun sendInternal(text: String, image: Bitmap?, audioWav: ByteArray?, display: String? = null) {
     if (_generating.value || !engine.isReady) return
     val userId = ids.getAndIncrement()
     val userItem =
       ChatItem(
         id = userId,
         sender = Sender.USER,
-        text = if (text.isEmpty() && audioWav != null) "🎤 …" else text,
+        text = display ?: if (text.isEmpty() && audioWav != null) "🎤 …" else text,
         image = image,
         hasAudio = audioWav != null,
       )
@@ -373,7 +409,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     }
     _generating.value = true
     _reply.value = ""
-    if (audioWav == null) _heard.value = text
+    if (audioWav == null) _heard.value = display ?: text
     if (_voiceOpen.value) _voiceState.value = VoiceState.THINKING
 
     val speak = shouldSpeak()
@@ -466,6 +502,29 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     }
     _generating.value = false
     if (error != null) _reply.value = "오류가 났습니다: $error"
+
+    // 사진을 찍고 "봐 달라"고 했으면, 찍은 사진을 젬마에게 바로 보여 준다
+    val photo = pendingPhoto
+    pendingPhoto = null
+    val askAbout = _heard.value
+    if (error == null && photo != null && photo.second && photo.first.preview != null) {
+      followUpPending = true
+      viewModelScope.launch(Dispatchers.Main) {
+        delay(300)
+        var waited = 0
+        while (speaker.speaking.value && waited < 8000) {
+          delay(100)
+          waited += 100
+        }
+        followUpPending = false
+        sendInternal(
+          "방금 찍은 사진입니다. 사용자의 요청: \"$askAbout\". 사진을 보고 요청에 맞게 답하세요.",
+          photo.first.preview,
+          null,
+          display = "📷 방금 찍은 사진",
+        )
+      }
+    }
     viewModelScope.launch(Dispatchers.Main) {
       if (spoke && mutedTurn) {
         speaker.stop()
@@ -601,6 +660,12 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   /** 대답 읽기가 끝났을 때: 음성 화면이면 다시 귀를 기울인다. */
   private fun onSpeechFinished() {
     if (!_voiceOpen.value) return
+    if (followUpPending) return
+    // 다른 앱을 조작하러 나가 있으면 마이크를 켜지 않는다 (안드로이드는 백그라운드 녹음을 막는다)
+    if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+      _voiceState.value = VoiceState.IDLE
+      return
+    }
     if (_generating.value || _recording.value) return
     if (endRequested) {
       endRequested = false

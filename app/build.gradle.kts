@@ -13,8 +13,8 @@ android {
     applicationId = "com.kunwooroh.gemmaagent"
     minSdk = 31
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2.0"
+    versionCode = 4
+    versionName = "1.3.0"
   }
 
   // 개인용 고정 서명키 (업데이트 설치가 계속 되도록 항상 같은 키로 서명)
@@ -63,5 +63,9 @@ dependencies {
   implementation(libs.material.icon.extended)
   implementation(libs.kotlin.reflect)
   implementation(libs.litertlm)
+  implementation(libs.camerax.core)
+  implementation(libs.camerax.camera2)
+  implementation(libs.camerax.lifecycle)
+  implementation(libs.androidx.lifecycle.process)
   debugImplementation(libs.androidx.ui.tooling)
 }

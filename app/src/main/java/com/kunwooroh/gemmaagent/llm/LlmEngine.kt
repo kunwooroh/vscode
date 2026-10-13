@@ -91,7 +91,7 @@ class LlmEngine(private val context: Context) {
                 if (attempt.backend == "GPU") Backend.GPU() else Backend.CPU()
               } else null,
             audioBackend = if (attempt.multimodal) Backend.CPU() else null, // 음성은 CPU 고정
-            maxNumTokens = 4000,
+            maxNumTokens = 8192,
             cacheDir = context.cacheDir.absolutePath,
           )
         val candidate = Engine(config)
@@ -132,6 +132,11 @@ class LlmEngine(private val context: Context) {
         samplerConfig = SamplerConfig(topK = 64, topP = 0.95, temperature = 1.0),
       )
     )
+
+  /** 젬마에게 주는 도구 목록을 바꾼다. 다음 resetConversation부터 적용. */
+  fun setTools(tools: List<ToolProvider>) {
+    this.tools = tools
+  }
 
   /** 대화를 처음부터 다시 시작 (모델은 그대로 유지). */
   suspend fun resetConversation() =

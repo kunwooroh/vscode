@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">젬마 비서</string>
+    <string name="screen_control_label">젬마 비서 화면 조작</string>
+    <string name="screen_control_desc">젬마가 말로 받은 명령을 실행하기 위해 화면의 글자를 읽고 버튼을 누릅니다. 모든 처리는 폰 안에서만 이루어지며, 보내기·결제·삭제 같은 동작은 먼저 확인을 받습니다.</string>
 </resources>

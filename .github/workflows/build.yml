@@ -28,7 +28,7 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleRelease 2>&1 | tee build.log
+          ./gradlew --no-daemon --stacktrace assembleStandardRelease assembleFullRelease 2>&1 | tee build.log
 
       # 빌드 결과 기록을 build-log 브랜치에 남겨 둔다 (오류 확인용)
       - name: Save build log
@@ -51,12 +51,13 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/gemma-agent.apk
+          cp app/build/outputs/apk/standard/release/app-standard-release.apk out/gemma-agent.apk
+          cp app/build/outputs/apk/full/release/app-full-release.apk out/gemma-agent-full.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: gemma-agent-apk
-          path: out/gemma-agent.apk
+          path: out/*.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -64,6 +65,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           tag_name: build-${{ github.run_number }}
           name: 젬마 비서 (빌드 ${{ github.run_number }})
-          body: 폰에서 gemma-agent.apk 를 눌러 설치하세요.
-          files: out/gemma-agent.apk
+          body: |
+            gemma-agent.apk — 기본판 (바로 설치됨, 화면 조작 제외)
+            gemma-agent-full.apk — 전체판 (화면 조작 포함, 설치 때 Play 프로텍트 검사를 잠시 꺼야 함)
+          files: |
+            out/gemma-agent.apk
+            out/gemma-agent-full.apk
           make_latest: true

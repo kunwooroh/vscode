@@ -82,6 +82,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.kunwooroh.gemmaagent.AgentViewModel
+import com.kunwooroh.gemmaagent.BuildConfig
 import com.kunwooroh.gemmaagent.ChatItem
 import com.kunwooroh.gemmaagent.ModelStatus
 import com.kunwooroh.gemmaagent.Sender
@@ -363,7 +364,24 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
     ModalBottomSheet(onDismissRequest = { sheetOpen = false }) { TodoNotesSheet(vm) }
   }
 
-  if (screenDialog) {
+  if (screenDialog && !BuildConfig.SCREEN_CONTROL) {
+    AlertDialog(
+      onDismissRequest = { screenDialog = false },
+      title = { Text("화면 조작은 전체판 기능이에요") },
+      text = {
+        Text(
+          "다른 앱 화면을 읽고 누르는 기능은 접근성 권한이 필요해서, " +
+            "인터넷에서 받은 앱은 Google Play 프로텍트가 설치를 막아요.\n\n" +
+            "지금 쓰시는 기본판에서도 카메라·전화·문자·손전등·볼륨·음악·앱 열기는 모두 됩니다.\n\n" +
+            "화면 조작까지 쓰려면 Releases의 gemma-agent-full.apk를 설치하세요 " +
+            "(설치할 때만 Play 프로텍트 검사를 잠시 꺼야 해요)."
+        )
+      },
+      confirmButton = { TextButton(onClick = { screenDialog = false }) { Text("확인") } },
+    )
+  }
+
+  if (screenDialog && BuildConfig.SCREEN_CONTROL) {
     AlertDialog(
       onDismissRequest = { screenDialog = false },
       title = { Text(if (screenControl) "화면 조작이 켜져 있어요" else "화면 조작 켜기") },

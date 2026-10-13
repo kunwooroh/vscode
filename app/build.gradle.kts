@@ -13,8 +13,8 @@ android {
     applicationId = "com.kunwooroh.gemmaagent"
     minSdk = 31
     targetSdk = 36
-    versionCode = 4
-    versionName = "1.3.0"
+    versionCode = 5
+    versionName = "1.3.1"
   }
 
   // 개인용 고정 서명키 (업데이트 설치가 계속 되도록 항상 같은 키로 서명)
@@ -39,7 +39,23 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
-  buildFeatures { compose = true }
+  buildFeatures {
+    compose = true
+    buildConfig = true
+  }
+
+  // standard: 그대로 설치되는 기본판 / full: 화면 조작(접근성)까지 들어간 전체판
+  flavorDimensions += "edition"
+  productFlavors {
+    create("standard") {
+      dimension = "edition"
+      buildConfigField("boolean", "SCREEN_CONTROL", "false")
+    }
+    create("full") {
+      dimension = "edition"
+      buildConfigField("boolean", "SCREEN_CONTROL", "true")
+    }
+  }
   packaging { jniLibs { pickFirsts.add("**/liblitertlm_jni.so") } }
 }
 

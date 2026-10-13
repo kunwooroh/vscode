@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 화면 조작 (접근성): 다른 앱 화면을 읽고 누르기 -->
+        <service
+            android:name="com.kunwooroh.gemmaagent.tools.ScreenControlService"
+            android:exported="false"
+            android:label="@string/screen_control_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_control" />
+        </service>
+    </application>
+</manifest>

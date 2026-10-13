@@ -1,7 +1,9 @@
 package com.kunwooroh.gemmaagent.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,10 +37,14 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -79,6 +85,7 @@ import com.kunwooroh.gemmaagent.AgentViewModel
 import com.kunwooroh.gemmaagent.ChatItem
 import com.kunwooroh.gemmaagent.ModelStatus
 import com.kunwooroh.gemmaagent.Sender
+import com.kunwooroh.gemmaagent.llm.Speaker
 
 private val SUGGESTIONS =
   listOf(
@@ -100,6 +107,11 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
   val pendingImage by vm.pendingImage.collectAsState()
   val thinking by vm.thinking.collectAsState()
   val useGpu by vm.useGpu.collectAsState()
+  val voiceReply by vm.voiceReply.collectAsState()
+  val startInVoice by vm.startInVoice.collectAsState()
+  val userTitle by vm.userTitle.collectAsState()
+  val ttsStatus by vm.speaker.status.collectAsState()
+  var titleDialog by remember { mutableStateOf(false) }
 
   var input by remember { mutableStateOf("") }
   var menuOpen by remember { mutableStateOf(false) }
@@ -111,6 +123,21 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
       if (granted) vm.startRecording()
     }
+  val voicePermission =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (granted) vm.openVoice()
+    }
+  val openVoice = {
+    if (vm.hasMicPermission()) vm.openVoice() else voicePermission.launch(Manifest.permission.RECORD_AUDIO)
+  }
+  // 앱을 열면 바로 음성 비서 화면으로
+  LaunchedEffect(Unit) {
+    if (vm.settings.startInVoiceMode && !vm.autoOpenedVoice && multimodal) {
+      vm.autoOpenedVoice = true
+      openVoice()
+    }
+  }
+
   val imagePicker =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
       if (uri != null) vm.attachImage(uri)
@@ -136,6 +163,15 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
           }
         },
         actions = {
+          IconButton(onClick = { openVoice() }, enabled = multimodal) {
+            Icon(Icons.Filled.GraphicEq, contentDescription = "음성 비서 모드")
+          }
+          IconButton(onClick = { vm.setVoiceReply(!voiceReply) }) {
+            Icon(
+              if (voiceReply) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+              contentDescription = if (voiceReply) "음성 대답 끄기" else "음성 대답 켜기",
+            )
+          }
           IconButton(onClick = { sheetOpen = true }) {
             Icon(Icons.Filled.Checklist, contentDescription = "할 일·메모")
           }
@@ -160,6 +196,32 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
                 trailingIcon = { Switch(checked = thinking, onCheckedChange = null) },
                 onClick = { vm.setThinking(!thinking) },
               )
+              DropdownMenuItem(
+                text = { Text("앱 열면 바로 음성 모드") },
+                trailingIcon = { Switch(checked = startInVoice, onCheckedChange = null) },
+                onClick = { vm.setStartInVoice(!startInVoice) },
+              )
+              DropdownMenuItem(
+                text = { Text(if (userTitle.isBlank()) "나를 부르는 호칭 정하기" else "호칭: $userTitle") },
+                onClick = {
+                  menuOpen = false
+                  titleDialog = true
+                },
+              )
+              if (ttsStatus == Speaker.Status.NO_KOREAN || ttsStatus == Speaker.Status.FAILED) {
+                DropdownMenuItem(
+                  text = { Text("한국어 음성 설치하기") },
+                  onClick = {
+                    menuOpen = false
+                    try {
+                      context.startActivity(
+                        Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+                          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      )
+                    } catch (_: Exception) {}
+                  },
+                )
+              }
               HorizontalDivider()
               DropdownMenuItem(
                 text = { Text("모델 바꾸기") },
@@ -185,7 +247,7 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize(),
           ) {
-            items(messages, key = { it.id }) { item -> MessageRow(item) }
+            items(messages, key = { it.id }) { item -> MessageRow(item, onReplay = { vm.replay(item) }) }
           }
         }
       }
@@ -281,6 +343,32 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
   if (sheetOpen) {
     ModalBottomSheet(onDismissRequest = { sheetOpen = false }) { TodoNotesSheet(vm) }
   }
+
+  if (titleDialog) {
+    var value by remember { mutableStateOf(userTitle) }
+    AlertDialog(
+      onDismissRequest = { titleDialog = false },
+      title = { Text("어떻게 불러드릴까요?") },
+      text = {
+        Column {
+          Text("예: 대표님, 사장님, 선생님 (비워두면 호칭 없이)", style = MaterialTheme.typography.bodySmall)
+          Spacer(Modifier.height(8.dp))
+          OutlinedTextField(value = value, onValueChange = { value = it }, singleLine = true)
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            vm.setUserTitle(value)
+            titleDialog = false
+          }
+        ) {
+          Text("저장")
+        }
+      },
+      dismissButton = { TextButton(onClick = { titleDialog = false }) { Text("취소") } },
+    )
+  }
 }
 
 @Composable
@@ -310,7 +398,7 @@ private fun EmptyState(onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun MessageRow(item: ChatItem) {
+private fun MessageRow(item: ChatItem, onReplay: () -> Unit) {
   when (item.sender) {
     Sender.TOOL ->
       Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -381,6 +469,14 @@ private fun MessageRow(item: ChatItem) {
               Text("…", style = MaterialTheme.typography.titleMedium)
             } else {
               SelectionContainer { Text(item.text) }
+              if (!item.streaming && !item.isError) {
+                Icon(
+                  Icons.AutoMirrored.Filled.VolumeUp,
+                  contentDescription = "다시 듣기",
+                  tint = MaterialTheme.colorScheme.primary,
+                  modifier = Modifier.padding(top = 6.dp).size(18.dp).clickable { onReplay() },
+                )
+              }
             }
           }
         }

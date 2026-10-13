@@ -17,6 +17,8 @@ class AudioRecorder {
   companion object {
     const val SAMPLE_RATE = 16_000
     const val MAX_SECONDS = 30
+    const val SILENCE_MS = 1200L
+    const val NO_SPEECH_MS = 8000L
   }
 
   @Volatile private var recording = false
@@ -30,8 +32,12 @@ class AudioRecorder {
   val isRecording: Boolean
     get() = recording
 
+  /**
+   * @param detectSilence true면 말이 끝나고 잠깐 조용해지면 자동으로 멈춘다 (핸즈프리 대화용)
+   * @param onAutoStop 자동으로 멈췄을 때 호출. 인자는 실제로 말소리가 있었는지 여부.
+   */
   @SuppressLint("MissingPermission") // 호출 전에 RECORD_AUDIO 권한을 확인한다
-  fun start(onAutoStop: () -> Unit) {
+  fun start(detectSilence: Boolean = false, onAutoStop: (Boolean) -> Unit) {
     if (recording) return
     pcm.reset()
     val minBuf =
@@ -50,6 +56,10 @@ class AudioRecorder {
       val buf = ByteArray(minBuf)
       val maxBytes = SAMPLE_RATE * 2 * MAX_SECONDS
       var autoStopped = false
+      var heardSpeech = false
+      var noiseFloor = 0.02f
+      var lastLoud = System.currentTimeMillis()
+      val startedAt = lastLoud
       try {
         while (recording) {
           val n = recorder.read(buf, 0, buf.size)
@@ -68,6 +78,26 @@ class AudioRecorder {
               autoStopped = true
               break
             }
+            if (detectSilence) {
+              val now = System.currentTimeMillis()
+              // 처음 0.3초로 주변 소음 크기를 잡는다
+              if (now - startedAt < 300) noiseFloor = maxOf(noiseFloor, level * 0.9f)
+              val threshold = maxOf(0.06f, minOf(noiseFloor * 2.5f, 0.2f))
+              if (level > threshold) {
+                if (now - startedAt > 150) heardSpeech = true
+                lastLoud = now
+              }
+              // 말한 뒤 1.2초 조용하면 끝
+              if (heardSpeech && now - lastLoud > SILENCE_MS) {
+                autoStopped = true
+                break
+              }
+              // 8초 동안 아무 말도 없으면 끝
+              if (!heardSpeech && now - startedAt > NO_SPEECH_MS) {
+                autoStopped = true
+                break
+              }
+            }
           }
         }
       } finally {
@@ -78,7 +108,7 @@ class AudioRecorder {
         } catch (_: Throwable) {}
         recorder.release()
       }
-      if (autoStopped) onAutoStop()
+      if (autoStopped) onAutoStop(heardSpeech || !detectSilence)
     }
   }
 

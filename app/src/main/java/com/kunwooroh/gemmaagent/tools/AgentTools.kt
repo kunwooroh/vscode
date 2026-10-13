@@ -2,6 +2,11 @@ package com.kunwooroh.gemmaagent.tools
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.os.BatteryManager
 import android.provider.AlarmClock
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
@@ -170,6 +175,98 @@ class AgentTools(
       mapOf("result" to text)
     } catch (e: Exception) {
       mapOf("result" to "error", "message" to (e.message ?: "invalid expression"))
+    }
+  }
+
+  @Tool(description = "Turn the phone's flashlight (torch) on or off (손전등/플래시).")
+  fun setFlashlight(@ToolParam(description = "true to turn on, false to turn off.") on: Boolean): Map<String, Any> {
+    return try {
+      val cm = context.getSystemService(CameraManager::class.java)
+      val id =
+        cm.cameraIdList.firstOrNull {
+          cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+        } ?: return mapOf("result" to "error", "message" to "no flashlight")
+      cm.setTorchMode(id, on)
+      onToolUsed(if (on) "🔦 손전등 켬" else "🔦 손전등 끔")
+      mapOf("result" to if (on) "on" else "off")
+    } catch (e: Exception) {
+      mapOf("result" to "error", "message" to (e.message ?: "flashlight error"))
+    }
+  }
+
+  @Tool(description = "Get the phone's battery level and charging state (배터리).")
+  fun getBatteryStatus(): Map<String, Any> {
+    val bm = context.getSystemService(BatteryManager::class.java)
+    val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+    val charging =
+      status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+    onToolUsed("🔋 배터리 $pct%")
+    return mapOf("percent" to pct, "charging" to charging)
+  }
+
+  @Tool(description = "Open an installed app by its name, e.g. '카카오톡', '유튜브', '카메라' (앱 열기).")
+  fun openApp(@ToolParam(description = "App name as the user said it.") appName: String): Map<String, Any> {
+    val pm = context.packageManager
+    val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val apps = pm.queryIntentActivities(launcher, PackageManager.MATCH_ALL)
+    val query = appName.replace(" ", "").lowercase()
+    val aliases =
+      mapOf(
+        "유튜브" to "youtube", "카톡" to "카카오톡", "크롬" to "chrome", "지도" to "maps",
+        "사진" to "갤러리", "인스타" to "instagram", "네이버" to "naver",
+      )
+    val alt = aliases[query]?.lowercase()
+    fun score(label: String): Int {
+      val l = label.replace(" ", "").lowercase()
+      return when {
+        l == query || (alt != null && l == alt) -> 3
+        l.startsWith(query) || (alt != null && l.startsWith(alt)) -> 2
+        l.contains(query) || (alt != null && l.contains(alt)) -> 1
+        else -> 0
+      }
+    }
+    val best =
+      apps
+        .map { it to score(it.loadLabel(pm).toString()) }
+        .filter { it.second > 0 }
+        .maxByOrNull { it.second }
+        ?.first ?: return mapOf("result" to "error", "message" to "app '$appName' not found")
+    val label = best.loadLabel(pm).toString()
+    return try {
+      val intent =
+        pm.getLaunchIntentForPackage(best.activityInfo.packageName)
+          ?: return mapOf("result" to "error", "message" to "cannot open")
+      context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      onToolUsed("📱 $label 열기")
+      mapOf("result" to "opened", "app" to label)
+    } catch (e: Exception) {
+      mapOf("result" to "error", "message" to (e.message ?: "cannot open"))
+    }
+  }
+
+  @Tool(description = "Start a countdown timer in the Clock app (타이머). Example: 3 minutes -> seconds=180.")
+  fun setTimer(
+    @ToolParam(description = "Timer length in seconds.") seconds: Int,
+    @ToolParam(description = "Timer label. Default: empty string.") label: String = "",
+  ): Map<String, Any> {
+    if (seconds < 1) return mapOf("result" to "error", "message" to "seconds must be >= 1")
+    val intent =
+      Intent(AlarmClock.ACTION_SET_TIMER).apply {
+        putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+        if (label.isNotBlank()) putExtra(AlarmClock.EXTRA_MESSAGE, label)
+        putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+    return try {
+      context.startActivity(intent)
+      val m = seconds / 60
+      val sec = seconds % 60
+      onToolUsed("⏱️ 타이머 " + (if (m > 0) "${m}분 " else "") + (if (sec > 0) "${sec}초" else ""))
+      mapOf("result" to "timer started", "seconds" to seconds)
+    } catch (e: Exception) {
+      mapOf("result" to "error", "message" to "No clock app available")
     }
   }
 }

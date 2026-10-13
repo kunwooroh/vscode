@@ -1,9 +1,12 @@
 package com.kunwooroh.gemmaagent
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.tool
@@ -15,6 +18,8 @@ import com.kunwooroh.gemmaagent.llm.EngineState
 import com.kunwooroh.gemmaagent.llm.LlmEngine
 import com.kunwooroh.gemmaagent.llm.ModelManager
 import com.kunwooroh.gemmaagent.llm.ModelOption
+import com.kunwooroh.gemmaagent.llm.Prompts
+import com.kunwooroh.gemmaagent.llm.Speaker
 import com.kunwooroh.gemmaagent.tools.AgentTools
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Calendar
 import java.util.concurrent.atomic.AtomicLong
 
 sealed interface ModelStatus {
@@ -40,6 +46,9 @@ sealed interface ModelStatus {
 
 enum class Sender { USER, AGENT, TOOL }
 
+/** 음성 비서 화면의 상태 */
+enum class VoiceState { IDLE, LISTENING, THINKING, SPEAKING }
+
 data class ChatItem(
   val id: Long,
   val sender: Sender,
@@ -51,6 +60,8 @@ data class ChatItem(
   val isError: Boolean = false,
 )
 
+private val END_WORDS = Regex("(그만|종료|됐어|고마워|수고했어|잘\\s?자)")
+
 class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private val ctx = app.applicationContext
   val settings = Settings(ctx)
@@ -59,6 +70,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   val notes = NoteStore(ctx)
   private val engine = LlmEngine(ctx)
   private val recorder = AudioRecorder()
+  val speaker = Speaker(ctx)
   private val ids = AtomicLong(1)
 
   private val _status = MutableStateFlow<ModelStatus>(ModelStatus.NoModel)
@@ -88,17 +100,43 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private val _useGpu = MutableStateFlow(settings.useGpu)
   val useGpu: StateFlow<Boolean> = _useGpu
 
+  private val _voiceReply = MutableStateFlow(settings.voiceReply)
+  val voiceReply: StateFlow<Boolean> = _voiceReply
+
+  private val _startInVoice = MutableStateFlow(settings.startInVoiceMode)
+  val startInVoice: StateFlow<Boolean> = _startInVoice
+
+  private val _userTitle = MutableStateFlow(settings.userTitle)
+  val userTitle: StateFlow<String> = _userTitle
+
+  // 음성 비서 화면
+  private val _voiceOpen = MutableStateFlow(false)
+  val voiceOpen: StateFlow<Boolean> = _voiceOpen
+
+  private val _voiceState = MutableStateFlow(VoiceState.IDLE)
+  val voiceState: StateFlow<VoiceState> = _voiceState
+
+  private val _heard = MutableStateFlow("")
+  val heard: StateFlow<String> = _heard
+
+  private val _reply = MutableStateFlow("")
+  val reply: StateFlow<String> = _reply
+
+  /** 앱 실행 후 음성 화면을 자동으로 한 번 열었는지 */
+  var autoOpenedVoice = false
+  private var greeted = false
+  private var endRequested = false
+  @Volatile private var mutedTurn = false
+
   private var workJob: Job? = null
   private var currentAgentId: Long = -1
 
-  private val agentTools =
-    AgentTools(ctx, todos, notes) { label -> onToolUsed(label) }
+  private val agentTools = AgentTools(ctx, todos, notes) { label -> onToolUsed(label) }
 
   init {
+    speaker.onAllDone = { viewModelScope.launch(Dispatchers.Main) { onSpeechFinished() } }
     val saved = settings.modelPath
-    if (saved != null && File(saved).exists()) {
-      loadModel(File(saved))
-    }
+    if (saved != null && File(saved).exists()) loadModel(File(saved))
   }
 
   // ───────────── 모델 준비 ─────────────
@@ -113,9 +151,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
       viewModelScope.launch {
         _status.value = ModelStatus.Downloading(option.name, 0f)
         try {
-          val file = models.download(option) { p ->
-            _status.value = ModelStatus.Downloading(option.name, p)
-          }
+          val file = models.download(option) { p -> _status.value = ModelStatus.Downloading(option.name, p) }
           refreshInstalled()
           loadModel(file)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -170,10 +206,10 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
             modelPath = file.absolutePath,
             preferGpu = settings.useGpu,
             tools = listOf(tool(agentTools)),
+            systemPrompt = { Prompts.systemInstruction(settings.userTitle) },
           )
         settings.modelPath = file.absolutePath
         if (state.backend == "CPU" && settings.useGpu) {
-          // GPU가 안 되는 폰이면 다음부터 바로 CPU로 시작
           settings.useGpu = false
           _useGpu.value = false
         }
@@ -185,17 +221,19 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   fun backToSetup() {
+    closeVoice()
     stopGeneration()
     engine.close()
     refreshInstalled()
     _status.value = ModelStatus.NoModel
   }
 
+  // ───────────── 설정 ─────────────
+
   fun setUseGpu(v: Boolean) {
     settings.useGpu = v
     _useGpu.value = v
-    val path = settings.modelPath ?: return
-    loadModel(File(path))
+    settings.modelPath?.let { loadModel(File(it)) }
   }
 
   fun setThinking(v: Boolean) {
@@ -203,11 +241,31 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     _thinking.value = v
   }
 
+  fun setVoiceReply(v: Boolean) {
+    settings.voiceReply = v
+    _voiceReply.value = v
+    if (!v) speaker.stop()
+  }
+
+  fun setStartInVoice(v: Boolean) {
+    settings.startInVoiceMode = v
+    _startInVoice.value = v
+  }
+
+  fun setUserTitle(v: String) {
+    settings.userTitle = v.trim()
+    _userTitle.value = v.trim()
+    newChat() // 새 호칭을 반영해 대화를 새로 시작
+  }
+
   // ───────────── 대화 ─────────────
 
   fun newChat() {
     stopGeneration()
+    speaker.stop()
     _messages.value = emptyList()
+    _heard.value = ""
+    _reply.value = ""
     viewModelScope.launch { engine.resetConversation() }
   }
 
@@ -245,13 +303,16 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     sendInternal(text.trim(), image, null)
   }
 
+  private fun shouldSpeak(): Boolean = speaker.isReady && (_voiceReply.value || _voiceOpen.value)
+
   private fun sendInternal(text: String, image: Bitmap?, audioWav: ByteArray?) {
     if (_generating.value || !engine.isReady) return
+    val userId = ids.getAndIncrement()
     val userItem =
       ChatItem(
-        id = ids.getAndIncrement(),
+        id = userId,
         sender = Sender.USER,
-        text = if (text.isEmpty() && audioWav != null) "🎤 음성 메시지" else text,
+        text = if (text.isEmpty() && audioWav != null) "🎤 …" else text,
         image = image,
         hasAudio = audioWav != null,
       )
@@ -261,12 +322,50 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
       it + userItem + ChatItem(id = agentId, sender = Sender.AGENT, text = "", streaming = true)
     }
     _generating.value = true
+    _reply.value = ""
+    if (audioWav == null) _heard.value = text
+    if (_voiceOpen.value) _voiceState.value = VoiceState.THINKING
 
-    val pngBytes = image?.let { bmp ->
-      ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    val speak = shouldSpeak()
+    mutedTurn = false
+    if (speak) speaker.begin()
+
+    val pngBytes =
+      image?.let { bmp ->
+        ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+      }
+    val prompt = if (text.isEmpty() && audioWav != null) "(음성 메시지)" else text
+
+    // 음성 메시지면 첫 줄의 "» 들은 말"을 따로 떼어 낸다
+    var awaitingHeard = audioWav != null
+    val head = StringBuilder()
+
+    fun emitAnswer(chunk: String) {
+      if (chunk.isEmpty()) return
+      _messages.update { list -> list.map { if (it.id == agentId) it.copy(text = it.text + chunk) else it } }
+      _reply.update { it + chunk }
+      if (speak && !mutedTurn) {
+        speaker.feed(chunk)
+        if (_voiceOpen.value && _voiceState.value == VoiceState.THINKING) _voiceState.value = VoiceState.SPEAKING
+      }
     }
-    val prompt =
-      if (text.isEmpty() && audioWav != null) "음성 메시지를 듣고 요청을 처리해 주세요." else text
+
+    fun resolveHead(force: Boolean) {
+      val s = head.toString()
+      val nl = s.indexOf('\n')
+      if (nl < 0 && !force && s.length < 240) return
+      awaitingHeard = false
+      val firstLine = if (nl >= 0) s.substring(0, nl) else s
+      val rest = if (nl >= 0) s.substring(nl + 1) else ""
+      val trimmed = firstLine.trim()
+      if (trimmed.startsWith(Prompts.HEARD_MARK)) {
+        val heardText = trimmed.removePrefix(Prompts.HEARD_MARK).trim()
+        onHeard(userId, heardText)
+        emitAnswer(rest.trimStart())
+      } else {
+        emitAnswer(s)
+      }
+    }
 
     engine.send(
       text = prompt,
@@ -274,20 +373,36 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
       audioWav = audioWav,
       thinking = _thinking.value,
       onToken = { token, thought ->
-        _messages.update { list ->
-          list.map {
-            if (it.id == agentId) {
-              it.copy(text = it.text + token, thought = it.thought + (thought ?: ""))
-            } else it
+        if (!thought.isNullOrEmpty()) {
+          _messages.update { list ->
+            list.map { if (it.id == agentId) it.copy(thought = it.thought + thought) else it }
           }
         }
+        if (awaitingHeard) {
+          head.append(token)
+          resolveHead(force = false)
+        } else {
+          emitAnswer(token)
+        }
       },
-      onDone = { finish(agentId, null) },
-      onError = { msg -> finish(agentId, msg) },
+      onDone = {
+        if (awaitingHeard) resolveHead(force = true)
+        finish(agentId, null, speak)
+      },
+      onError = { msg -> finish(agentId, msg, speak) },
     )
   }
 
-  private fun finish(agentId: Long, error: String?) {
+  private fun onHeard(userId: Long, heardText: String) {
+    if (heardText.isEmpty()) return
+    _heard.value = heardText
+    _messages.update { list ->
+      list.map { if (it.id == userId) it.copy(text = "🎤 $heardText") else it }
+    }
+    if (END_WORDS.containsMatchIn(heardText)) endRequested = true
+  }
+
+  private fun finish(agentId: Long, error: String?, spoke: Boolean) {
     _messages.update { list ->
       list.map {
         if (it.id == agentId) {
@@ -300,6 +415,17 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
       }
     }
     _generating.value = false
+    if (error != null) _reply.value = "오류가 났습니다: $error"
+    viewModelScope.launch(Dispatchers.Main) {
+      if (spoke && mutedTurn) {
+        speaker.stop()
+        onSpeechFinished()
+      } else if (spoke) {
+        if (error != null) speaker.speak("죄송합니다. 오류가 났습니다.") else speaker.end()
+      } else {
+        onSpeechFinished()
+      }
+    }
   }
 
   private fun onToolUsed(label: String) {
@@ -307,9 +433,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     val agentId = currentAgentId
     _messages.update { list ->
       val idx = list.indexOfFirst { it.id == agentId }
-      if (idx >= 0) {
-        list.toMutableList().apply { add(idx, toolItem) }
-      } else list + toolItem
+      if (idx >= 0) list.toMutableList().apply { add(idx, toolItem) } else list + toolItem
     }
   }
 
@@ -317,16 +441,37 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     if (_generating.value) engine.stop()
   }
 
-  // ───────────── 음성 ─────────────
+  /** 채팅 말풍선의 대답을 다시 듣기 */
+  fun replay(item: ChatItem) {
+    if (speaker.isReady) speaker.speak(item.text)
+  }
+
+  fun stopSpeaking() = speaker.stop()
+
+  // ───────────── 녹음 ─────────────
+
+  fun hasMicPermission(): Boolean =
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
   fun startRecording() {
-    if (_recording.value || _generating.value) return
-    recorder.start(onAutoStop = { viewModelScope.launch { stopRecording(send = true) } })
+    if (_recording.value || _generating.value || !hasMicPermission()) return
+    speaker.stop()
+    recorder.start(detectSilence = true) { heardSpeech ->
+      viewModelScope.launch(Dispatchers.Main) {
+        if (heardSpeech) {
+          stopRecording(send = true)
+        } else {
+          stopRecording(send = false)
+          if (_voiceOpen.value) _voiceState.value = VoiceState.IDLE
+        }
+      }
+    }
     _recording.value = true
+    if (_voiceOpen.value) _voiceState.value = VoiceState.LISTENING
     viewModelScope.launch {
       while (isActive && recorder.isRecording) {
         _recordLevel.value = recorder.level
-        delay(80)
+        delay(60)
       }
       _recordLevel.value = 0f
     }
@@ -337,16 +482,88 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     _recording.value = false
     if (!send) {
       recorder.cancel()
+      if (_voiceOpen.value) _voiceState.value = VoiceState.IDLE
       return
     }
-    val wav = recorder.stop() ?: return
+    val wav = recorder.stop()
+    if (wav == null) {
+      if (_voiceOpen.value) _voiceState.value = VoiceState.IDLE
+      return
+    }
     val image = _pendingImage.value
     _pendingImage.value = null
     sendInternal("", image, wav)
   }
 
+  // ───────────── 음성 비서 화면 ─────────────
+
+  fun openVoice() {
+    if (_voiceOpen.value) return
+    _voiceOpen.value = true
+    endRequested = false
+    if (!greeted && speaker.isReady) {
+      greeted = true
+      val pending = todos.items.value.count { !it.done }
+      val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+      val text = Prompts.greeting(settings.userTitle, pending, hour)
+      _reply.value = text
+      _voiceState.value = VoiceState.SPEAKING
+      speaker.speak(text)
+    } else {
+      startRecording()
+    }
+  }
+
+  fun closeVoice() {
+    if (!_voiceOpen.value) return
+    _voiceOpen.value = false
+    stopRecording(send = false)
+    speaker.stop()
+    _voiceState.value = VoiceState.IDLE
+  }
+
+  /** 가운데 빛나는 원을 눌렀을 때 */
+  fun tapOrb() {
+    when (_voiceState.value) {
+      VoiceState.IDLE -> {
+        endRequested = false
+        startRecording()
+      }
+      VoiceState.LISTENING -> stopRecording(send = true)
+      VoiceState.THINKING -> stopGeneration()
+      VoiceState.SPEAKING -> {
+        // 말 끊기: 바로 다시 듣는다
+        endRequested = false
+        if (_generating.value) {
+          // 아직 대답을 만드는 중이면 생성도 멈춘다. 끝나는 대로 다시 듣는다.
+          mutedTurn = true
+          stopGeneration()
+          speaker.stop()
+          _voiceState.value = VoiceState.THINKING
+        } else {
+          speaker.stop()
+          startRecording()
+        }
+      }
+    }
+  }
+
+  /** 대답 읽기가 끝났을 때: 음성 화면이면 다시 귀를 기울인다. */
+  private fun onSpeechFinished() {
+    if (!_voiceOpen.value) return
+    if (_generating.value || _recording.value) return
+    if (endRequested) {
+      endRequested = false
+      _voiceState.value = VoiceState.IDLE
+      return
+    }
+    startRecording()
+    if (!_recording.value) _voiceState.value = VoiceState.IDLE
+  }
+
   override fun onCleared() {
     recorder.cancel()
+    speaker.shutdown()
     engine.close()
     super.onCleared()
   }

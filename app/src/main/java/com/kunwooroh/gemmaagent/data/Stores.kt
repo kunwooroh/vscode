@@ -194,4 +194,19 @@ class Settings(context: Context) {
   var modelPath: String?
     get() = prefs.getString("model_path", null)
     set(v) = prefs.edit().putString("model_path", v).apply()
+
+  /** 대답을 소리로도 읽어줄지 */
+  var voiceReply: Boolean
+    get() = prefs.getBoolean("voice_reply", true)
+    set(v) = prefs.edit().putBoolean("voice_reply", v).apply()
+
+  /** 앱을 열면 바로 음성 비서 화면으로 */
+  var startInVoiceMode: Boolean
+    get() = prefs.getBoolean("start_voice", true)
+    set(v) = prefs.edit().putBoolean("start_voice", v).apply()
+
+  /** 비서가 사용자를 부르는 호칭 (예: 대표님) */
+  var userTitle: String
+    get() = prefs.getString("user_title", "") ?: ""
+    set(v) = prefs.edit().putString("user_title", v).apply()
 }

@@ -3,6 +3,7 @@ package com.kunwooroh.gemmaagent.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,7 +50,13 @@ import com.kunwooroh.gemmaagent.llm.ModelManager
 fun AppRoot(vm: AgentViewModel) {
   val status by vm.status.collectAsState()
   when (val s = status) {
-    is ModelStatus.Ready -> ChatScreen(vm, s)
+    is ModelStatus.Ready -> {
+      val voiceOpen by vm.voiceOpen.collectAsState()
+      Box(Modifier.fillMaxSize()) {
+        ChatScreen(vm, s)
+        if (voiceOpen) VoiceScreen(vm)
+      }
+    }
     else -> SetupScreen(vm, s)
   }
 }

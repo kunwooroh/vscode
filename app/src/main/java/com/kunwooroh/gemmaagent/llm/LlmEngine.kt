@@ -39,6 +39,7 @@ class LlmEngine(private val context: Context) {
   private var engine: Engine? = null
   private var conversation: Conversation? = null
   private var tools: List<ToolProvider> = emptyList()
+  private var systemPrompt: () -> String = { Prompts.systemInstruction("") }
 
   var state: EngineState? = null
     private set
@@ -47,10 +48,16 @@ class LlmEngine(private val context: Context) {
     get() = engine != null && conversation != null
 
   @OptIn(ExperimentalApi::class)
-  suspend fun load(modelPath: String, preferGpu: Boolean, tools: List<ToolProvider>): EngineState =
+  suspend fun load(
+    modelPath: String,
+    preferGpu: Boolean,
+    tools: List<ToolProvider>,
+    systemPrompt: () -> String,
+  ): EngineState =
     withContext(Dispatchers.IO) {
       close()
       this@LlmEngine.tools = tools
+      this@LlmEngine.systemPrompt = systemPrompt
 
       val mtp =
         try {
@@ -120,7 +127,7 @@ class LlmEngine(private val context: Context) {
   private fun newConversation(engine: Engine): Conversation =
     engine.createConversation(
       ConversationConfig(
-        systemInstruction = Contents.of(Prompts.systemInstruction()),
+        systemInstruction = Contents.of(systemPrompt()),
         tools = tools,
         samplerConfig = SamplerConfig(topK = 64, topP = 0.95, temperature = 1.0),
       )

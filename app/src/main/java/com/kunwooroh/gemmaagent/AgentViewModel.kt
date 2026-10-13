@@ -22,6 +22,8 @@ import com.kunwooroh.gemmaagent.llm.ModelManager
 import com.kunwooroh.gemmaagent.llm.ModelOption
 import com.kunwooroh.gemmaagent.llm.Prompts
 import com.kunwooroh.gemmaagent.llm.Speaker
+import com.kunwooroh.gemmaagent.llm.SpeechListener
+import com.kunwooroh.gemmaagent.llm.VoiceConfig
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.kunwooroh.gemmaagent.tools.AgentTools
@@ -80,6 +82,8 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private val engine = LlmEngine(ctx)
   private val recorder = AudioRecorder()
   val speaker = Speaker(ctx)
+  private val listener = SpeechListener(ctx)
+  private var phoneListening = false
   private val ids = AtomicLong(1)
 
   private val _status = MutableStateFlow<ModelStatus>(ModelStatus.NoModel)
@@ -131,11 +135,30 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private val _reply = MutableStateFlow("")
   val reply: StateFlow<String> = _reply
 
+  // 듣기·목소리 설정
+  private val _listenEngine = MutableStateFlow(settings.listenEngine)
+  val listenEngine: StateFlow<String> = _listenEngine
+
+  private val _voiceConfig = MutableStateFlow(settings.voiceConfig)
+  val voiceConfig: StateFlow<VoiceConfig> = _voiceConfig
+
+  /** Supertonic 다운로드 진행률 (null = 다운로드 중 아님) */
+  private val _stDownload = MutableStateFlow<Float?>(null)
+  val stDownload: StateFlow<Float?> = _stDownload
+
+  /** 목소리·듣기 설정 화면 열림 */
+  val voiceSettingsOpen = MutableStateFlow(false)
+
+  /** 듣는 중 실시간 자막 */
+  private val _partial = MutableStateFlow("")
+  val partial: StateFlow<String> = _partial
+
   /** 앱 실행 후 음성 화면을 자동으로 한 번 열었는지 */
   var autoOpenedVoice = false
   private var greeted = false
   private var endRequested = false
   @Volatile private var mutedTurn = false
+  @Volatile private var userStopped = false
 
   private var workJob: Job? = null
   private var currentAgentId: Long = -1
@@ -172,6 +195,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   init {
+    speaker.applyConfig(settings.voiceConfig)
     speaker.onAllDone = { viewModelScope.launch(Dispatchers.Main) { onSpeechFinished() } }
     val saved = settings.modelPath
     if (saved != null && File(saved).exists()) loadModel(File(saved))
@@ -296,6 +320,51 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     _startInVoice.value = v
   }
 
+  fun setListenEngine(v: String) {
+    settings.listenEngine = v
+    _listenEngine.value = v
+  }
+
+  fun setVoiceConfig(c: VoiceConfig) {
+    settings.voiceConfig = c
+    _voiceConfig.value = c
+    speaker.applyConfig(c)
+  }
+
+  private var stJob: Job? = null
+
+  /** Supertonic 3 목소리 엔진 내려받기 (약 400MB) */
+  fun downloadVoiceEngine() {
+    if (stJob?.isActive == true) return
+    stJob =
+      viewModelScope.launch {
+        _stDownload.value = 0f
+        try {
+          models.downloadSupertonic(speaker.supertonicDir) { p -> _stDownload.value = p }
+          speaker.onSupertonicInstalled()
+          setVoiceConfig(_voiceConfig.value.copy(engine = VoiceConfig.ENGINE_SUPERTONIC))
+          toast("새 목소리 엔진 준비 완료")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+          throw e
+        } catch (e: Throwable) {
+          toast(e.message ?: "내려받기 실패")
+        } finally {
+          _stDownload.value = null
+        }
+      }
+  }
+
+  fun cancelVoiceEngineDownload() {
+    stJob?.cancel()
+    _stDownload.value = null
+  }
+
+  /** 지금 목소리로 들어보기 */
+  fun previewVoice() {
+    val who = settings.userTitle.ifBlank { "" }
+    speaker.speak("안녕하세요${if (who.isNotBlank()) ", $who" else ""}. 저는 젬마예요. 이 목소리로 도와드릴까요?")
+  }
+
   fun setUserTitle(v: String) {
     settings.userTitle = v.trim()
     _userTitle.value = v.trim()
@@ -409,11 +478,12 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     }
     _generating.value = true
     _reply.value = ""
-    if (audioWav == null) _heard.value = display ?: text
+    if (audioWav == null) _heard.value = if (display != null && display.startsWith("🎤")) text else (display ?: text)
     if (_voiceOpen.value) _voiceState.value = VoiceState.THINKING
 
     val speak = shouldSpeak()
     mutedTurn = false
+    userStopped = false
     if (speak) speaker.begin()
 
     val pngBytes =
@@ -494,7 +564,11 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         if (it.id == agentId) {
           when {
             error != null -> it.copy(streaming = false, isError = true, text = "⚠️ 오류: $error")
-            it.text.isBlank() -> it.copy(streaming = false, text = "(중단됨)")
+            it.text.isBlank() ->
+              it.copy(
+                streaming = false,
+                text = if (userStopped) "(중단됨)" else "잘 알아듣지 못했어요. 한 번만 다시 말씀해 주세요.",
+              )
             else -> it.copy(streaming = false, text = it.text.trim())
           }
         } else it
@@ -547,7 +621,10 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   fun stopGeneration() {
-    if (_generating.value) engine.stop()
+    if (_generating.value) {
+      userStopped = true
+      engine.stop()
+    }
   }
 
   /** 채팅 말풍선의 대답을 다시 듣기 */
@@ -565,6 +642,10 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   fun startRecording() {
     if (_recording.value || _generating.value || !hasMicPermission()) return
     speaker.stop()
+    if (_listenEngine.value == "phone" && listener.available) {
+      startPhoneListening()
+      return
+    }
     recorder.start(detectSilence = true) { heardSpeech ->
       viewModelScope.launch(Dispatchers.Main) {
         if (heardSpeech) {
@@ -586,8 +667,70 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     }
   }
 
+  /** 폰 한국어 음성인식으로 듣기 (말을 글자로 바꿔서 Gemma에게 보낸다) */
+  private fun startPhoneListening() {
+    phoneListening = true
+    _partial.value = ""
+    _recording.value = true
+    if (_voiceOpen.value) {
+      _voiceState.value = VoiceState.LISTENING
+      _heard.value = ""
+    }
+    listener.start(
+      object : SpeechListener.Callback {
+        override fun onPartial(text: String) {
+          _partial.value = text
+          if (_voiceOpen.value) _heard.value = text
+        }
+
+        override fun onLevel(level: Float) {
+          _recordLevel.value = level
+        }
+
+        override fun onResult(text: String) {
+          phoneListening = false
+          _recording.value = false
+          _recordLevel.value = 0f
+          _partial.value = ""
+          if (END_WORDS.containsMatchIn(text)) endRequested = true
+          val image = _pendingImage.value
+          _pendingImage.value = null
+          sendInternal(text, image, null, display = "🎤 $text")
+        }
+
+        override fun onNothing(fatal: Boolean, message: String) {
+          phoneListening = false
+          _recording.value = false
+          _recordLevel.value = 0f
+          _partial.value = ""
+          if (_voiceOpen.value) _voiceState.value = VoiceState.IDLE
+          if (fatal) {
+            // 폰 음성인식을 쓸 수 없으면 Gemma 직접 듣기로 바꾼다
+            setListenEngine("gemma")
+            toast("$message — Gemma 직접 듣기로 바꿨어요")
+          } else if (message.isNotBlank()) {
+            toast(message)
+          }
+        }
+      }
+    )
+  }
+
   fun stopRecording(send: Boolean) {
     if (!_recording.value) return
+    if (phoneListening) {
+      if (send) {
+        listener.stop() // 결과는 onResult로 온다
+      } else {
+        phoneListening = false
+        listener.cancel()
+        _recording.value = false
+        _recordLevel.value = 0f
+        _partial.value = ""
+        if (_voiceOpen.value) _voiceState.value = VoiceState.IDLE
+      }
+      return
+    }
     _recording.value = false
     if (!send) {
       recorder.cancel()
@@ -677,6 +820,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   }
 
   override fun onCleared() {
+    listener.cancel()
     recorder.cancel()
     speaker.shutdown()
     engine.close()

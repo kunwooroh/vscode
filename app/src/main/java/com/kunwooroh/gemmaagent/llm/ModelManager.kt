@@ -140,6 +140,77 @@ class ModelManager(private val context: Context) {
       target
     }
 
+  /** Supertonic 3 목소리 엔진 파일들을 내려받는다 (약 400MB). */
+  suspend fun downloadSupertonic(dir: File, onProgress: (Float) -> Unit) =
+    withContext(Dispatchers.IO) {
+      val total = Supertonic.TOTAL_BYTES.toFloat()
+      var doneBefore = 0L
+      for ((path, size) in Supertonic.FILES) {
+        val target = File(dir, path)
+        target.parentFile?.mkdirs()
+        if (!(target.exists() && target.length() > 0)) {
+          downloadFile(Supertonic.MODEL_FILES_BASE + path, target) { got ->
+            onProgress(((doneBefore + got) / total).coerceIn(0f, 1f))
+          }
+        }
+        doneBefore += size
+        onProgress((doneBefore / total).coerceIn(0f, 1f))
+      }
+    }
+
+  /** 파일 하나 내려받기 (리다이렉트 따라가기, 이어받기). */
+  private suspend fun downloadFile(urlStr: String, target: File, onBytes: (Long) -> Unit) {
+    val part = File(target.absolutePath + ".part")
+    val already = if (part.exists()) part.length() else 0L
+    var url = URL(urlStr)
+    var conn: HttpURLConnection
+    var redirects = 0
+    while (true) {
+      conn = (url.openConnection() as HttpURLConnection).apply {
+        instanceFollowRedirects = false
+        connectTimeout = 20_000
+        readTimeout = 60_000
+        if (already > 0) setRequestProperty("Range", "bytes=$already-")
+      }
+      val code = conn.responseCode
+      if (code in 300..399 && redirects < 6) {
+        val loc = conn.getHeaderField("Location") ?: break
+        url = URL(url, loc)
+        conn.disconnect()
+        redirects++
+        continue
+      }
+      break
+    }
+    val code = conn.responseCode
+    val append = code == HttpURLConnection.HTTP_PARTIAL
+    if (code != HttpURLConnection.HTTP_OK && !append) {
+      conn.disconnect()
+      throw IllegalStateException("다운로드 실패 (HTTP $code)")
+    }
+    var done = if (append) already else 0L
+    conn.inputStream.use { input ->
+      FileOutputStream(part, append).use { output ->
+        val buf = ByteArray(1 shl 16)
+        var last = 0L
+        while (true) {
+          coroutineContext.ensureActive()
+          val n = input.read(buf)
+          if (n < 0) break
+          output.write(buf, 0, n)
+          done += n
+          if (done - last > 2L * 1024 * 1024) {
+            last = done
+            onBytes(done)
+          }
+        }
+      }
+    }
+    conn.disconnect()
+    if (target.exists()) target.delete()
+    part.renameTo(target)
+  }
+
   /** 폰에 이미 받아둔 .litertlm 파일을 앱 폴더로 복사한다. */
   suspend fun importFromUri(uri: Uri, onProgress: (Float) -> Unit): File =
     withContext(Dispatchers.IO) {

@@ -13,8 +13,8 @@ android {
     applicationId = "com.kunwooroh.gemmaagent"
     minSdk = 31
     targetSdk = 36
-    versionCode = 5
-    versionName = "1.3.1"
+    versionCode = 6
+    versionName = "1.4.0"
   }
 
   // 개인용 고정 서명키 (업데이트 설치가 계속 되도록 항상 같은 키로 서명)
@@ -56,7 +56,7 @@ android {
       buildConfigField("boolean", "SCREEN_CONTROL", "true")
     }
   }
-  packaging { jniLibs { pickFirsts.add("**/liblitertlm_jni.so") } }
+  packaging { jniLibs { pickFirsts.addAll(listOf("**/liblitertlm_jni.so", "**/libc++_shared.so")) } }
 }
 
 kotlin {
@@ -83,5 +83,6 @@ dependencies {
   implementation(libs.camerax.camera2)
   implementation(libs.camerax.lifecycle)
   implementation(libs.androidx.lifecycle.process)
+  implementation(libs.onnxruntime.android)
   debugImplementation(libs.androidx.ui.tooling)
 }

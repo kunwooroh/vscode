@@ -205,6 +205,40 @@ class Settings(context: Context) {
     get() = prefs.getBoolean("start_voice", true)
     set(v) = prefs.edit().putBoolean("start_voice", v).apply()
 
+  /** 듣기 엔진: "phone"(폰 한국어 음성인식) 또는 "gemma"(Gemma가 소리를 직접 들음) */
+  var listenEngine: String
+    get() = prefs.getString("listen_engine", "phone") ?: "phone"
+    set(v) = prefs.edit().putString("listen_engine", v).apply()
+
+  /** 목소리 설정 */
+  var voiceConfig: com.kunwooroh.gemmaagent.llm.VoiceConfig
+    get() =
+      com.kunwooroh.gemmaagent.llm.VoiceConfig(
+        engine = prefs.getString("v_engine", "system") ?: "system",
+        stVoice = prefs.getString("v_st_voice", "F1") ?: "F1",
+        stVoice2 = prefs.getString("v_st_voice2", "") ?: "",
+        stBlend = prefs.getFloat("v_st_blend", 0f),
+        stSpeed = prefs.getFloat("v_st_speed", 1.05f),
+        stSteps = prefs.getInt("v_st_steps", 5),
+        sysEngine = prefs.getString("v_sys_engine", "") ?: "",
+        sysVoice = prefs.getString("v_sys_voice", "") ?: "",
+        sysRate = prefs.getFloat("v_sys_rate", 1.0f),
+        sysPitch = prefs.getFloat("v_sys_pitch", 1.0f),
+      )
+    set(v) =
+      prefs.edit()
+        .putString("v_engine", v.engine)
+        .putString("v_st_voice", v.stVoice)
+        .putString("v_st_voice2", v.stVoice2)
+        .putFloat("v_st_blend", v.stBlend)
+        .putFloat("v_st_speed", v.stSpeed)
+        .putInt("v_st_steps", v.stSteps)
+        .putString("v_sys_engine", v.sysEngine)
+        .putString("v_sys_voice", v.sysVoice)
+        .putFloat("v_sys_rate", v.sysRate)
+        .putFloat("v_sys_pitch", v.sysPitch)
+        .apply()
+
   /** 비서가 사용자를 부르는 호칭 (예: 대표님) */
   var userTitle: String
     get() = prefs.getString("user_title", "") ?: ""

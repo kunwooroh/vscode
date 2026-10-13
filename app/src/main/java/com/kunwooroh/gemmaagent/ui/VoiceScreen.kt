@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -137,6 +138,9 @@ fun VoiceScreen(vm: AgentViewModel) {
           modifier = Modifier.weight(1f),
           textAlign = TextAlign.Center,
         )
+        IconButton(onClick = { vm.voiceSettingsOpen.value = true }) {
+          Icon(Icons.Filled.RecordVoiceOver, contentDescription = "목소리 설정", tint = Color(0xFF9FB3CF))
+        }
         IconButton(onClick = { vm.closeVoice() }) {
           Icon(Icons.Filled.Keyboard, contentDescription = "글자로 대화", tint = Color(0xFF9FB3CF))
         }

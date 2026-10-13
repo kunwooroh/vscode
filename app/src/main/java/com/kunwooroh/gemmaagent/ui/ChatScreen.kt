@@ -210,6 +210,13 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
                 },
               )
               DropdownMenuItem(
+                text = { Text("🗣️ 목소리 · 듣기 설정") },
+                onClick = {
+                  menuOpen = false
+                  vm.voiceSettingsOpen.value = true
+                },
+              )
+              DropdownMenuItem(
                 text = { Text("🧩 스킬 관리") },
                 onClick = {
                   menuOpen = false
@@ -296,7 +303,12 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
               Icon(Icons.Filled.Close, contentDescription = "녹음 취소")
             }
             Column(Modifier.weight(1f)) {
-              Text("듣고 있어요… (최대 30초)", fontWeight = FontWeight.SemiBold)
+              val partialText by vm.partial.collectAsState()
+              Text(
+                partialText.ifBlank { "듣고 있어요… 말이 끝나면 자동으로 보내요" },
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+              )
               Spacer(Modifier.height(6.dp))
               LinearProgressIndicator(progress = { level }, modifier = Modifier.fillMaxWidth())
             }

@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,15 +47,20 @@ import com.kunwooroh.gemmaagent.AgentViewModel
 import com.kunwooroh.gemmaagent.ModelStatus
 import com.kunwooroh.gemmaagent.llm.ModelManager
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: AgentViewModel) {
   val status by vm.status.collectAsState()
   when (val s = status) {
     is ModelStatus.Ready -> {
       val voiceOpen by vm.voiceOpen.collectAsState()
+      val settingsOpen by vm.voiceSettingsOpen.collectAsState()
       Box(Modifier.fillMaxSize()) {
         ChatScreen(vm, s)
         if (voiceOpen) VoiceScreen(vm)
+      }
+      if (settingsOpen) {
+        ModalBottomSheet(onDismissRequest = { vm.voiceSettingsOpen.value = false }) { VoiceSettingsSheet(vm) }
       }
     }
     else -> SetupScreen(vm, s)

@@ -112,6 +112,7 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
   val userTitle by vm.userTitle.collectAsState()
   val ttsStatus by vm.speaker.status.collectAsState()
   var titleDialog by remember { mutableStateOf(false) }
+  var skillsOpen by remember { mutableStateOf(false) }
 
   var input by remember { mutableStateOf("") }
   var menuOpen by remember { mutableStateOf(false) }
@@ -195,6 +196,13 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
                 text = { Text("생각 모드 (느리지만 꼼꼼)") },
                 trailingIcon = { Switch(checked = thinking, onCheckedChange = null) },
                 onClick = { vm.setThinking(!thinking) },
+              )
+              DropdownMenuItem(
+                text = { Text("🧩 스킬 관리") },
+                onClick = {
+                  menuOpen = false
+                  skillsOpen = true
+                },
               )
               DropdownMenuItem(
                 text = { Text("앱 열면 바로 음성 모드") },
@@ -342,6 +350,10 @@ fun ChatScreen(vm: AgentViewModel, ready: ModelStatus.Ready) {
 
   if (sheetOpen) {
     ModalBottomSheet(onDismissRequest = { sheetOpen = false }) { TodoNotesSheet(vm) }
+  }
+
+  if (skillsOpen) {
+    ModalBottomSheet(onDismissRequest = { skillsOpen = false }) { SkillsSheet(vm) }
   }
 
   if (titleDialog) {
@@ -532,3 +544,71 @@ private fun TodoNotesSheet(vm: AgentViewModel) {
   }
 }
 
+
+@Composable
+private fun SkillsSheet(vm: AgentViewModel) {
+  val skills by vm.skills.items.collectAsState()
+  var url by remember { mutableStateOf("") }
+  val filePicker =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      if (uri != null) vm.addSkillFromUri(uri)
+    }
+  LazyColumn(Modifier.fillMaxWidth().heightIn(max = 620.dp), contentPadding = PaddingValues(16.dp)) {
+    item {
+      Text("스킬", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+      Text(
+        "스킬은 특정 일을 잘하게 만드는 지침서(SKILL.md)예요. 요청이 맞으면 젬마가 알아서 꺼내 씁니다.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Spacer(Modifier.height(8.dp))
+    }
+    items(skills, key = { it.name }) { sk ->
+      Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text(sk.name + if (sk.builtIn) "  · 기본" else "", fontWeight = FontWeight.SemiBold)
+          Text(sk.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+        }
+        if (!sk.builtIn) {
+          IconButton(onClick = { vm.deleteSkill(sk.name) }) {
+            Icon(Icons.Filled.Delete, contentDescription = "삭제")
+          }
+        }
+        Switch(checked = sk.enabled, onCheckedChange = { vm.setSkillEnabled(sk.name, it) })
+      }
+    }
+    item {
+      Spacer(Modifier.height(12.dp))
+      HorizontalDivider()
+      Spacer(Modifier.height(12.dp))
+      Text("스킬 추가", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Spacer(Modifier.height(6.dp))
+      TextButton(onClick = { filePicker.launch(arrayOf("text/*", "application/octet-stream", "*/*")) }) {
+        Text("📄 폰에서 SKILL.md 파일 선택")
+      }
+      OutlinedTextField(
+        value = url,
+        onValueChange = { url = it },
+        placeholder = { Text("GitHub 주소 또는 SKILL.md 주소") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+      )
+      TextButton(
+        onClick = {
+          vm.addSkillFromUrl(url)
+          url = ""
+        },
+        enabled = url.startsWith("http"),
+      ) {
+        Text("🌐 주소로 추가")
+      }
+      Text(
+        "AI Edge Gallery·Claude 스킬과 같은 형식이라 그대로 쓸 수 있어요. " +
+          "단, JavaScript가 들어간 스킬은 아직 지원하지 않고 글(지침)만 사용합니다.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Spacer(Modifier.height(24.dp))
+    }
+  }
+}

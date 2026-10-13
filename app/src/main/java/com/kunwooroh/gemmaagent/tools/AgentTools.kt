@@ -12,6 +12,7 @@ import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
 import com.google.ai.edge.litertlm.ToolSet
 import com.kunwooroh.gemmaagent.data.NoteStore
+import com.kunwooroh.gemmaagent.data.SkillStore
 import com.kunwooroh.gemmaagent.data.TodoStore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -27,8 +28,26 @@ class AgentTools(
   private val context: Context,
   private val todos: TodoStore,
   private val notes: NoteStore,
+  private val skills: SkillStore,
   private val onToolUsed: (String) -> Unit,
 ) : ToolSet {
+
+  @Tool(
+    description =
+      "Load the full instructions of a skill by name. Call this FIRST whenever the user's request " +
+        "matches one of the skills listed in the system instruction, then follow the returned instructions."
+  )
+  fun useSkill(@ToolParam(description = "Exact skill name from the skill list.") name: String): Map<String, Any> {
+    val skill =
+      skills.find(name)
+        ?: return mapOf(
+          "result" to "error",
+          "message" to "skill '$name' not found",
+          "available" to skills.enabledSkills().map { it.name },
+        )
+    onToolUsed("🧩 스킬 사용: ${skill.name}")
+    return mapOf("skill" to skill.name, "instructions" to skill.body)
+  }
 
   @Tool(
     description =

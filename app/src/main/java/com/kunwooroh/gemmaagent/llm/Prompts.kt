@@ -9,7 +9,7 @@ object Prompts {
   /** 음성 메시지 첫 줄에 "들은 말"을 적게 할 때 쓰는 표시. */
   const val HEARD_MARK = "»"
 
-  fun systemInstruction(userTitle: String): String {
+  fun systemInstruction(userTitle: String, skills: List<Pair<String, String>> = emptyList()): String {
     val now = SimpleDateFormat("yyyy년 M월 d일 EEEE HH:mm", Locale.KOREA).format(Date())
     val title = userTitle.trim()
     val callUser =
@@ -46,6 +46,7 @@ $HEARD_MARK 내일 아침 일곱 시에 깨워줘
 - 날짜·요일·시간 → get_current_date_time
 - 손전등 → set_flashlight, 배터리 → get_battery_status, "OO 열어줘" → open_app
 
+${skillSection(skills)}
 ## 요청별 방식
 - 요약: 핵심 한 문장 + 중요한 점 2~3개
 - 번역: 번역문 먼저
@@ -57,6 +58,18 @@ $HEARD_MARK 내일 아침 일곱 시에 깨워줘
 - 모르는 사실을 지어내지 않는다.
 - 의학·법률·금융처럼 중요한 결정은 일반 정보만 주고 전문가 확인을 권한다.
 """.trim()
+  }
+
+  private fun skillSection(skills: List<Pair<String, String>>): String {
+    if (skills.isEmpty()) return ""
+    val list = skills.joinToString("\n") { (name, desc) -> "- $name: $desc" }
+    return """
+## 스킬
+아래는 특정 작업을 잘하기 위한 지침 묶음(스킬)이다. 요청이 스킬 설명에 맞으면,
+대답하기 전에 먼저 use_skill 도구로 그 스킬을 불러오고, 돌려받은 지침을 그대로 따른다.
+같은 대화에서 이미 불러온 스킬은 다시 부르지 않아도 된다. 맞는 스킬이 없으면 그냥 대답한다.
+$list
+"""
   }
 
   /** 음성 모드를 열었을 때 모델 없이 바로 말하는 짧은 브리핑. */

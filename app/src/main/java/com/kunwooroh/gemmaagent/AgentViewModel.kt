@@ -6,12 +6,14 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.litertlm.tool
 import com.kunwooroh.gemmaagent.data.NoteStore
 import com.kunwooroh.gemmaagent.data.Settings
+import com.kunwooroh.gemmaagent.data.SkillStore
 import com.kunwooroh.gemmaagent.data.TodoStore
 import com.kunwooroh.gemmaagent.llm.AudioRecorder
 import com.kunwooroh.gemmaagent.llm.EngineState
@@ -68,6 +70,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   val models = ModelManager(ctx)
   val todos = TodoStore(ctx)
   val notes = NoteStore(ctx)
+  val skills = SkillStore(ctx)
   private val engine = LlmEngine(ctx)
   private val recorder = AudioRecorder()
   val speaker = Speaker(ctx)
@@ -131,7 +134,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
   private var workJob: Job? = null
   private var currentAgentId: Long = -1
 
-  private val agentTools = AgentTools(ctx, todos, notes) { label -> onToolUsed(label) }
+  private val agentTools = AgentTools(ctx, todos, notes, skills) { label -> onToolUsed(label) }
 
   init {
     speaker.onAllDone = { viewModelScope.launch(Dispatchers.Main) { onSpeechFinished() } }
@@ -206,7 +209,12 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
             modelPath = file.absolutePath,
             preferGpu = settings.useGpu,
             tools = listOf(tool(agentTools)),
-            systemPrompt = { Prompts.systemInstruction(settings.userTitle) },
+            systemPrompt = {
+              Prompts.systemInstruction(
+                settings.userTitle,
+                skills.enabledSkills().map { it.name to it.description },
+              )
+            },
           )
         settings.modelPath = file.absolutePath
         if (state.backend == "CPU" && settings.useGpu) {
@@ -256,6 +264,48 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     settings.userTitle = v.trim()
     _userTitle.value = v.trim()
     newChat() // 새 호칭을 반영해 대화를 새로 시작
+  }
+
+  // ───────────── 스킬 ─────────────
+
+  private fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
+
+  /** 스킬이 바뀌면 젬마가 새 목록을 알도록 대화를 새로 시작한다. */
+  private fun afterSkillChange(msg: String) {
+    toast(msg)
+    if (engine.isReady) newChat()
+  }
+
+  fun addSkillFromUri(uri: Uri) {
+    viewModelScope.launch {
+      try {
+        val name = skills.addFromUri(uri)
+        afterSkillChange("스킬 추가: $name")
+      } catch (e: Throwable) {
+        toast(e.message ?: "스킬을 추가하지 못했습니다")
+      }
+    }
+  }
+
+  fun addSkillFromUrl(url: String) {
+    viewModelScope.launch {
+      try {
+        val name = skills.addFromUrl(url)
+        afterSkillChange("스킬 추가: $name")
+      } catch (e: Throwable) {
+        toast(e.message ?: "스킬을 추가하지 못했습니다")
+      }
+    }
+  }
+
+  fun setSkillEnabled(name: String, enabled: Boolean) {
+    skills.setEnabled(name, enabled)
+    afterSkillChange(if (enabled) "켜짐: $name" else "꺼짐: $name")
+  }
+
+  fun deleteSkill(name: String) {
+    skills.delete(name)
+    afterSkillChange("삭제: $name")
   }
 
   // ───────────── 대화 ─────────────

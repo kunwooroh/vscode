@@ -13,8 +13,8 @@ android {
     applicationId = "com.kunwooroh.gemmaagent"
     minSdk = 31
     targetSdk = 36
-    versionCode = 2
-    versionName = "1.1.0"
+    versionCode = 3
+    versionName = "1.2.0"
   }
 
   // 개인용 고정 서명키 (업데이트 설치가 계속 되도록 항상 같은 키로 서명)

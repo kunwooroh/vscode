@@ -18,6 +18,9 @@ Gemma 4를 **폰 안에서만** 실행하는 개인 AI 에이전트 안드로이
   - 정확한 계산
   - 현재 날짜·시간 확인
   - 손전등 켜기/끄기, 배터리 확인, 앱 열기("카카오톡 열어줘"), 타이머
+- 🧩 스킬: SKILL.md 지침서를 넣으면 요청에 맞을 때 젬마가 알아서 불러 씀
+  - 기본 스킬: 쇼츠 대본, 블로그 글, 영어·일본어 회화, 회의록 정리
+  - ⋮ 메뉴 → 스킬 관리에서 켜기/끄기, 파일이나 GitHub 주소로 추가 (AI Edge Gallery·Claude 스킬 형식 호환, 글 스킬만)
 - GPU 가속 (안 되는 폰은 자동으로 CPU), 생각 모드 켜기/끄기
 
 ## 설치
@@ -34,6 +37,7 @@ Gemma 4를 **폰 안에서만** 실행하는 개인 AI 에이전트 안드로이
 | 비서의 성격·말투·규칙 | `app/src/main/java/.../llm/Prompts.kt` |
 | 목소리 빠르기·높낮이 | `app/src/main/java/.../llm/Speaker.kt` (`rate`, `pitch`) |
 | 도구 추가·수정 | `app/src/main/java/.../tools/AgentTools.kt` |
+| 기본 스킬 | `app/src/main/assets/skills/*.md` |
 | 화면 | `app/src/main/java/.../ui/` |
 
 도구는 `@Tool` 함수 하나만 추가하면 Gemma 4가 알아서 호출합니다.

@@ -1,0 +1,39 @@
+# 젬마 비서 (Gemma Agent)
+
+Gemma 4를 **폰 안에서만** 실행하는 개인 AI 에이전트 안드로이드 앱입니다. 인터넷은 모델을 처음 내려받을 때만 씁니다.
+
+## 기능
+- 채팅 (한국어 개인비서: 요약, 번역, 초안, 아이디어, 일정 정리)
+- 🎤 음성 입력: 별도 음성인식 없이 Gemma 4가 소리를 직접 듣고 처리
+- 🖼️ 사진 첨부: 사진을 보고 설명하거나 질문에 답변
+- 🛠️ 에이전트 도구 (모델이 스스로 실행)
+  - 할 일 추가·목록·완료·삭제
+  - N분/N시간 뒤 알림 (리마인더)
+  - 시계 앱 알람 설정
+  - 메모 저장·검색
+  - 정확한 계산
+  - 현재 날짜·시간 확인
+- GPU 가속 (안 되는 폰은 자동으로 CPU), 생각 모드 켜기/끄기
+
+## 설치
+1. 이 저장소의 **Releases**에서 최신 `gemma-agent.apk`를 폰으로 내려받아 설치합니다.
+   (처음이면 "출처를 알 수 없는 앱 설치"를 허용해야 합니다.)
+2. 앱을 열고 **Gemma 4 E2B**(RAM 8GB 이상) 또는 **E4B**(RAM 12GB 이상)를 와이파이로 내려받습니다.
+   이미 `.litertlm` 파일이 있으면 "폰에서 .litertlm 파일 선택"으로 불러옵니다.
+
+> PC용 `.gguf`(Ollama·LM Studio) 파일은 폰에서 쓸 수 없습니다.
+
+## 고치는 곳
+| 바꾸고 싶은 것 | 파일 |
+| --- | --- |
+| 비서의 성격·말투·규칙 | `app/src/main/java/.../llm/Prompts.kt` |
+| 도구 추가·수정 | `app/src/main/java/.../tools/AgentTools.kt` |
+| 화면 | `app/src/main/java/.../ui/` |
+
+도구는 `@Tool` 함수 하나만 추가하면 Gemma 4가 알아서 호출합니다.
+
+## 직접 빌드
+Android Studio에서 이 폴더를 열고 실행하거나, `./gradlew assembleRelease`.
+`main`에 푸시하면 GitHub Actions가 APK를 자동으로 만들어 Releases에 올립니다.
+
+엔진: [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) (Apache 2.0) · 모델: Gemma 4 (Apache 2.0)

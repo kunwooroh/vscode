@@ -24,9 +24,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build release APK
+        id: build
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon --stacktrace assembleRelease 2>&1 | tee build.log
+
+      # 빌드 결과 기록을 build-log 브랜치에 남겨 둔다 (오류 확인용)
+      - name: Save build log
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/logrepo
+          cp build.log /tmp/logrepo/build.log 2>/dev/null || echo "no log" > /tmp/logrepo/build.log
+          grep -E "^e: |error:|What went wrong|Could not|FAILURE" -A6 build.log > /tmp/logrepo/errors.txt 2>/dev/null || true
+          echo "run=${{ github.run_number }} sha=${{ github.sha }} result=${{ steps.build.outcome }}" > /tmp/logrepo/status.txt
+          cd /tmp/logrepo
+          git init -q -b build-log
+          git config user.name "build-bot"
+          git config user.email "build-bot@users.noreply.github.com"
+          git add build.log status.txt errors.txt
+          git commit -q -m "build ${{ github.run_number }}: ${{ steps.build.outcome }}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git" build-log
 
       - name: Rename APK
         run: |
@@ -41,6 +61,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          target_commitish: ${{ github.sha }}
           tag_name: build-${{ github.run_number }}
           name: 젬마 비서 (빌드 ${{ github.run_number }})
           body: 폰에서 gemma-agent.apk 를 눌러 설치하세요.

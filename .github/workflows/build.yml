@@ -19,14 +19,14 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
-
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build release APK
         id: build
         run: |
           set -o pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleRelease 2>&1 | tee build.log
 

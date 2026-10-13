@@ -15,6 +15,8 @@ android {
     targetSdk = 36
     versionCode = 6
     versionName = "1.4.0"
+    // 요즘 폰(64비트 ARM)용만 넣어서 설치 파일 크기를 줄인다
+    ndk { abiFilters += "arm64-v8a" }
   }
 
   // 개인용 고정 서명키 (업데이트 설치가 계속 되도록 항상 같은 키로 서명)

@@ -1,0 +1,144 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+WARNING: We recommend using a newer Android Gradle plugin to use compile SDK version 37.0
+
+This Android Gradle plugin (9.0.1) was tested up to compile SDK version 36.1.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compile SDK version 37.0.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compile SDK version 37.0 is available.
+
+For more information refer to the compatibility table:
+https://d.android.com/r/tools/api-level-support
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=37.0
+to this project's gradle.properties.
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preStandardReleaseBuild UP-TO-DATE
+> Task :app:mergeStandardReleaseJniLibFolders
+> Task :app:mergeStandardReleaseNativeLibs
+> Task :app:checkStandardReleaseDuplicateClasses
+> Task :app:generateStandardReleaseBuildConfig
+> Task :app:generateStandardReleaseResources
+> Task :app:packageStandardReleaseResources
+
+> Task :app:stripStandardReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, liblitertlm_jni.so, libonnxruntime.so, libonnxruntime4j_jni.so, libsurface_util_jni.so. Run with --info option to learn more.
+
+> Task :app:processStandardReleaseNavigationResources
+> Task :app:extractStandardReleaseNativeSymbolTables
+> Task :app:mergeStandardReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:javaPreCompileStandardRelease
+> Task :app:parseStandardReleaseLocalResources
+> Task :app:checkStandardReleaseAarMetadata
+> Task :app:compileStandardReleaseNavigationResources
+> Task :app:generateStandardReleaseRFile
+> Task :app:mapStandardReleaseSourceSetPaths
+> Task :app:createStandardReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksStandardRelease
+> Task :app:mergeStandardReleaseResources
+> Task :app:processStandardReleaseMainManifest
+> Task :app:processStandardReleaseManifest
+> Task :app:desugarStandardReleaseFileDependencies
+> Task :app:mergeStandardReleaseStartupProfile
+> Task :app:processStandardReleaseManifestForPackage
+> Task :app:processStandardReleaseResources
+> Task :app:generateStandardReleaseAssets UP-TO-DATE
+> Task :app:mergeStandardReleaseArtProfile
+> Task :app:mergeStandardReleaseAssets
+> Task :app:compressStandardReleaseAssets
+> Task :app:extractStandardReleaseVersionControlInfo
+> Task :app:extractProguardFiles
+> Task :app:collectStandardReleaseDependencies
+> Task :app:optimizeStandardReleaseResources
+> Task :app:sdkStandardReleaseDependencyData
+> Task :app:validateSigningStandardRelease
+> Task :app:writeStandardReleaseAppMetadata
+> Task :app:writeStandardReleaseSigningConfigVersions
+> Task :app:preFullReleaseBuild UP-TO-DATE
+> Task :app:mergeFullReleaseJniLibFolders
+> Task :app:checkFullReleaseDuplicateClasses
+> Task :app:generateFullReleaseBuildConfig
+> Task :app:generateFullReleaseResources
+> Task :app:packageFullReleaseResources
+> Task :app:processFullReleaseNavigationResources
+> Task :app:parseFullReleaseLocalResources
+> Task :app:generateFullReleaseRFile
+> Task :app:mergeFullReleaseNativeLibs
+
+> Task :app:stripFullReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libimage_processing_util_jni.so, liblitertlm_jni.so, libonnxruntime.so, libonnxruntime4j_jni.so, libsurface_util_jni.so. Run with --info option to learn more.
+
+> Task :app:mergeExtDexStandardRelease
+> Task :app:javaPreCompileFullRelease
+> Task :app:checkFullReleaseAarMetadata
+> Task :app:compileFullReleaseNavigationResources
+> Task :app:mapFullReleaseSourceSetPaths
+> Task :app:extractFullReleaseNativeSymbolTables
+> Task :app:mergeFullReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:createFullReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksFullRelease
+> Task :app:processFullReleaseMainManifest
+> Task :app:processFullReleaseManifest
+> Task :app:processFullReleaseManifestForPackage
+> Task :app:desugarFullReleaseFileDependencies
+> Task :app:mergeFullReleaseStartupProfile
+> Task :app:mergeFullReleaseResources
+> Task :app:compileStandardReleaseKotlin
+> Task :app:mergeExtDexFullRelease
+> Task :app:mergeFullReleaseArtProfile
+> Task :app:generateFullReleaseAssets UP-TO-DATE
+> Task :app:mergeFullReleaseAssets
+> Task :app:compressFullReleaseAssets
+> Task :app:extractFullReleaseVersionControlInfo
+> Task :app:processFullReleaseResources
+> Task :app:collectFullReleaseDependencies
+> Task :app:sdkFullReleaseDependencyData
+> Task :app:validateSigningFullRelease
+> Task :app:writeFullReleaseAppMetadata
+> Task :app:writeFullReleaseSigningConfigVersions
+> Task :app:optimizeFullReleaseResources
+> Task :app:compileFullReleaseKotlin
+w: file:///home/runner/work/vscode/vscode/app/src/main/java/com/kunwooroh/gemmaagent/llm/Speaker.kt:160:22 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///home/runner/work/vscode/vscode/app/src/main/java/com/kunwooroh/gemmaagent/tools/ScreenControlService.kt:91:44 'var isChecked: Boolean' is deprecated. Deprecated in Java.
+
+> Task :app:compileStandardReleaseKotlin
+w: file:///home/runner/work/vscode/vscode/app/src/main/java/com/kunwooroh/gemmaagent/llm/Speaker.kt:160:22 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///home/runner/work/vscode/vscode/app/src/main/java/com/kunwooroh/gemmaagent/tools/ScreenControlService.kt:91:44 'var isChecked: Boolean' is deprecated. Deprecated in Java.
+
+> Task :app:compileStandardReleaseJavaWithJavac
+> Task :app:dexBuilderStandardRelease
+> Task :app:mergeStandardReleaseGlobalSynthetics
+> Task :app:generateStandardReleaseLintVitalReportModel
+> Task :app:processStandardReleaseJavaRes
+> Task :app:compileFullReleaseJavaWithJavac
+> Task :app:mergeStandardReleaseJavaResource
+> Task :app:dexBuilderFullRelease
+> Task :app:mergeFullReleaseGlobalSynthetics
+> Task :app:mergeDexStandardRelease
+> Task :app:generateFullReleaseLintVitalReportModel
+> Task :app:compileStandardReleaseArtProfile
+> Task :app:processFullReleaseJavaRes
+> Task :app:mergeDexFullRelease
+> Task :app:compileFullReleaseArtProfile
+> Task :app:mergeFullReleaseJavaResource
+> Task :app:lintVitalAnalyzeStandardRelease
+> Task :app:lintVitalAnalyzeFullRelease
+> Task :app:lintVitalReportFullRelease
+> Task :app:lintVitalReportStandardRelease
+> Task :app:lintVitalFullRelease
+> Task :app:lintVitalStandardRelease
+> Task :app:packageStandardRelease
+> Task :app:createStandardReleaseApkListingFileRedirect
+> Task :app:assembleStandardRelease
+> Task :app:packageFullRelease
+> Task :app:createFullReleaseApkListingFileRedirect
+> Task :app:assembleFullRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1791868803088.json
+
+BUILD SUCCESSFUL in 1m 46s
+99 actionable tasks: 99 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.2.1/userguide/configuration_cache_enabling.html
